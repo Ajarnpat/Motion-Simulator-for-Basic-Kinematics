@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Exploring 1D and 2D Motion</title>
+  <style>
+    :root {
+      --bg: #0f172a;       /* slate-900 */
+      --panel: #111827cc;  /* semi-transparent dark */
+      --text: #f8fafc;     /* slate-50 */
+      --muted: #cbd5e1;    /* slate-300 */
+      --accent: #38bdf8;   /* sky-400 */
+      --accent-2: #a78bfa; /* violet-400 */
+      --ring: #ffffff55;
+      --shadow: 0 10px 20px rgba(0,0,0,.25), 0 6px 6px rgba(0,0,0,.2);
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      color: var(--text);
+      background: radial-gradient(1400px 600px at 10% 0%, #1e293b 0%, var(--bg) 60%),
+                  radial-gradient(1200px 500px at 100% 100%, #111827 0%, #0b1024 70%);
+      overflow-x: hidden;
+    }
+
+    .wrap { position: relative; min-height: 100%; isolation: isolate; }
+
+    /* Semi-clear background illustration (inline SVG) */
+    .bg-art {
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      pointer-events: none;
+      display: grid;
+      place-items: center;
+      opacity: 0.09; /* "semi clear" */
+      filter: drop-shadow(0 25px 25px rgba(0,0,0,.2));
+    }
+    .bg-art svg { width: min(90vw, 1400px); height: auto; }
+
+    header { padding: clamp(20px, 3vh, 32px) 20px 8px; }
+    .title {
+      text-align: center;
+      font-size: clamp(28px, 3.6vw, 48px);
+      line-height: 1.1;
+      letter-spacing: 0.3px;
+      margin: 0 0 8px 0;
+      text-shadow: 0 1px 0 rgba(0,0,0,.4);
+    }
+    .subtitle { text-align: center; color: var(--muted); margin: 0; font-size: clamp(14px, 1.6vw, 16px); }
+
+    main { max-width: 1200px; margin: 0 auto; padding: 16px 20px 60px; }
+
+    .notice {
+      background: linear-gradient(180deg, #0b1227cc, #0b1227aa);
+      border: 1px solid #334155;
+      border-radius: 16px;
+      padding: 18px 18px 18px 54px;
+      margin: 18px 0 28px;
+      box-shadow: var(--shadow);
+      position: relative;
+    }
+    .notice::before {
+      content: "!";
+      position: absolute; left: 16px; top: 50%; transform: translateY(-50%);
+      width: 28px; height: 28px; border-radius: 50%;
+      display: grid; place-items: center;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      color: #020617; font-weight: 800;
+      box-shadow: 0 6px 12px rgba(0,0,0,.25);
+    }
+    .notice p { margin: 0; font-size: clamp(14px, 1.8vw, 18px); }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 18px;
+      align-items: stretch;
+    }
+
+    .card {
+      background: linear-gradient(180deg, #0c132acc, #0c132ab3);
+      border: 1px solid #334155;
+      border-radius: 20px;
+      padding: 18px;
+      display: flex; flex-direction: column; justify-content: space-between;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(3px);
+    }
+
+    .label {
+      font-size: clamp(16px, 2.2vw, 20px);
+      font-weight: 600; margin: 2px 0 14px;
+    }
+
+    .open-btn { 
+      --btn-pad-y: 16px;
+      display: inline-block; text-align: center; width: 100%;
+      padding: var(--btn-pad-y) 18px; border-radius: 14px; 
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      color: #020617; text-decoration: none; font-weight: 800; 
+      letter-spacing: .25px; font-size: clamp(16px, 2.2vw, 20px);
+      border: none; outline: none;
+      box-shadow: 0 10px 20px rgba(0,0,0,.25), 0 3px 0 #00000040 inset;
+    }
+    .open-btn:focus { outline: 3px solid var(--ring); outline-offset: 4px; }
+    .open-btn:hover { filter: brightness(1.02); transform: translateY(-1px); }
+    .open-btn:active { transform: translateY(0); box-shadow: 0 6px 12px rgba(0,0,0,.3), 0 0 0 #0000 inset; }
+
+    footer { text-align: center; color: #94a3b8; font-size: 12px; padding: 24px 0; }
+
+    /* Large touch targets for smart boards */
+    @media (min-width: 1600px) {
+      .grid { grid-template-columns: repeat(3, 1fr); gap: 24px; }
+      .open-btn { --btn-pad-y: 24px; font-size: 24px; }
+      .label { font-size: 24px; }
+      .notice p { font-size: 22px; }
+    }
+  
+    /* Easter egg button & flash overlay */
+    header { position: relative; }
+    .easter {
+      position: absolute;
+      width: 1cm; height: 1cm; /* no more than 1cm x 1cm */
+      cursor: pointer;
+      user-select: none;
+      filter: drop-shadow(0 2px 4px rgba(0,0,0,.4));
+    }
+    #flash {
+      position: fixed;
+      inset: 0;
+      display: none; /* becomes flex when shown */
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      background: #000; /* helps the image pop */
+    }
+    #flash.show { display: flex; }
+    #flash .media {
+      width: 100vw;
+      height: 100vh;
+      object-fit: cover; /* fill as much of the screen as possible */
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <!-- Decorative background illustration: a simple buggy/car silhouette -->
+    <div class="bg-art" aria-hidden="true">
+      <svg viewBox="0 0 1200 600" role="img" aria-label="Subtle background of a car/buggy">
+        <defs>
+          <linearGradient id="grad" x1="0" x2="1" y1="0" y2="1">
+            <stop offset="0%" stop-color="#38bdf8" />
+            <stop offset="100%" stop-color="#a78bfa" />
+          </linearGradient>
+        </defs>
+        <!-- Ground line -->
+        <rect x="0" y="420" width="1200" height="8" fill="url(#grad)" opacity="0.6" />
+        <!-- Simplified buggy body -->
+        <path d="M170 380 C 220 330, 260 310, 320 305 L 720 290 C 780 288, 840 320, 880 360 L 1000 360 L 1080 400 L 170 400 Z" fill="url(#grad)" />
+        <!-- Roll cage -->
+        <path d="M330 305 L 420 220 L 640 220 L 720 290" fill="none" stroke="url(#grad)" stroke-width="18" stroke-linecap="round" stroke-linejoin="round" />
+        <!-- Wheels -->
+        <circle cx="340" cy="400" r="78" fill="#0b1227" stroke="url(#grad)" stroke-width="22" />
+        <circle cx="880" cy="400" r="98" fill="#0b1227" stroke="url(#grad)" stroke-width="22" />
+        <circle cx="340" cy="400" r="26" fill="#1e293b" />
+        <circle cx="880" cy="400" r="34" fill="#1e293b" />
+      </svg>
+    </div>
+
+    <header>
+      <h1 class="title">Exploring 1D and 2D Motion</h1>
+      <p class="subtitle">Launch any of the six motion simulations below. Each opens in a new tab.</p>
+    </header>
+
+    <main>
+      <!-- Instruction textbox -->
+      <div class="notice" role="note" aria-label="Important instructions">
+        <p>Read the <em>(provided)</em> instructions carefully before using any of the files.</p>
+      </div>
+
+      <!--
+        👉 HOW TO CONNECT YOUR SIX FILES
+        Replace the href paths below with the actual filenames or paths in your repo.
+        If your files live in a folder (e.g., ./sim/), use href="sim/your-file.html".
+        Example names are placeholders.
+      -->
+      <section class="grid" aria-label="Motion simulations">
+        <article class="card">
+          <div class="label">Simulation 1</div>
+          <a class="open-btn" href="motion1.html" target="_blank" rel="noopener">Open</a>
+        </article>
+        <article class="card">
+          <div class="label">Simulation 2</div>
+          <a class="open-btn" href="motion2.html" target="_blank" rel="noopener">Open</a>
+        </article>
+        <article class="card">
+          <div class="label">Simulation 3</div>
+          <a class="open-btn" href="motion3.html" target="_blank" rel="noopener">Open</a>
+        </article>
+        <article class="card">
+          <div class="label">Simulation 4</div>
+          <a class="open-btn" href="motion4.html" target="_blank" rel="noopener">Open</a>
+        </article>
+        <article class="card">
+          <div class="label">Simulation 5</div>
+          <a class="open-btn" href="motion5.html" target="_blank" rel="noopener">Open</a>
+        </article>
+        <article class="card">
+          <div class="label">Simulation 6</div>
+          <a class="open-btn" href="motion6.html" target="_blank" rel="noopener">Open</a>
+        </article>
+      </section>
+
+      <!-- Optional: you can add a small legend or usage tips here if needed. -->
+
+    </main>
+
+    <footer>
+      <small>Designed for classroom & smart board use • Buttons open in new tabs</small>
+    </footer>
+  </div>
+  <div id="flash" aria-hidden="true"></div>
+
+  <script>
+  (function () {
+    // Preload lighter assets for instant flash
+    ['pat1.jpg','pat2.jpg','pat3.jpg','pat5.jpg','pat6.jpg'].forEach(src => { const i = new Image(); i.src = src; });
+
+    const mediaOptions = ['pat1.jpg','pat2.jpg','pat3.jpg','pat4.mp4','pat5.jpg','pat6.jpg']; // equal probability
+
+    const header = document.querySelector('header');
+    if (!header) return;
+
+    // 50% chance to create the small face button
+    if (Math.random() >= 0.5) return;
+
+    const btn = document.createElement('img');
+    btn.src = 'face2.png';
+    btn.alt = 'Hidden trigger';
+    btn.className = 'easter';
+    btn.setAttribute('role', 'button');
+    btn.setAttribute('tabindex', '0');
+    btn.setAttribute('aria-label', 'Show hidden image');
+    header.appendChild(btn);
+
+    // Random on-screen position within header, left or right of the title
+    requestAnimationFrame(() => {
+      try {
+        const headerRect = header.getBoundingClientRect();
+        const btnRect = btn.getBoundingClientRect();
+        const margin = 16; // keep away from edges a bit
+        const leftSide = Math.random() < 0.5;
+
+        // Horizontal randomization within a 30% band on either side
+        const band = Math.max(0, headerRect.width * 0.30 - btnRect.width - margin);
+        const x = margin + Math.random() * band;
+        if (leftSide) {
+          btn.style.left = x + 'px';
+          btn.style.right = 'auto';
+        } else {
+          btn.style.right = x + 'px';
+          btn.style.left = 'auto';
+        }
+
+        // Vertical randomization anywhere within the header box
+        const maxY = Math.max(0, headerRect.height - btnRect.height);
+        btn.style.top = (Math.random() * maxY) + 'px';
+      } catch (e) { /* graceful no-op */ }
+    });
+
+    const flash = document.getElementById('flash');
+    const choose = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+    let used = false; // ensure one-time use per page load
+
+    const showFlash = () => {
+      if (used) return;
+      used = true;
+
+      // remove the button immediately so it can't be pressed again
+      try { btn.remove(); } catch (_) { /* ignore */ }
+
+      if (!flash) return;
+      flash.innerHTML = '';
+      const pick = choose(mediaOptions);
+
+      let el;
+      if (pick.toLowerCase().endsWith('.mp4')) {
+        el = document.createElement('video');
+        el.src = pick;
+        el.autoplay = true;
+        el.muted = true;        // allow autoplay without sound
+        el.playsInline = true;  // iOS inline playback
+      } else {
+        el = document.createElement('img');
+        el.src = pick;
+        el.alt = '';
+      }
+      el.className = 'media';
+
+      flash.appendChild(el);
+      flash.classList.add('show');
+
+      if (el.tagName === 'VIDEO') {
+        try { el.currentTime = 0; const p = el.play(); p && p.catch && p.catch(() => {}); } catch (_) {}
+      }
+
+      // 0.7 seconds exposure
+      setTimeout(() => {
+        if (el.tagName === 'VIDEO') { try { el.pause(); } catch (_) {} }
+        flash.classList.remove('show');
+        flash.innerHTML = '';
+      }, 700);
+    };
+
+    btn.addEventListener('click', showFlash);
+    btn.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        showFlash();
+      }
+    });
+  })();
+  </script>
+</body>
+</html>
