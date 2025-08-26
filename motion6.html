@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Motion 6 — Rounded Square Loop (Auto‑Pause + Live Table + Easter Egg)</title>
+  <style>
+    :root{ --ball-d: 28px; }
+    body{font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 0; background:#0b0c10; color:#eaf0f7}
+    header{padding:16px 20px; border-bottom:1px solid #222; display:flex; gap:12px; align-items:end; flex-wrap:wrap}
+    header h1{font-size:1.1rem; margin:0; letter-spacing:.2px; color:#cfe4ff}
+    .controls{display:flex; gap:8px; flex-wrap:wrap; align-items:center}
+    button, input[type=range]{background:#11161d; color:#eaf0f7; border:1px solid #2a3542; padding:8px 12px; border-radius:10px; font-size:.95rem; cursor:pointer}
+    button:hover{background:#18202a}
+    button:disabled{opacity:.5; cursor:not-allowed}
+    .readout{margin-left:auto; display:flex; gap:24px; align-items:center}
+    .chip{background:#0f1722; border:1px solid #253344; padding:6px 10px; border-radius:999px; font-variant-numeric: tabular-nums}
+
+    .stage-wrap{padding:20px; height:calc(100vh - 140px); box-sizing:border-box}
+    .stage{position:relative; width:100%; height:100%; border:1px solid #1f2a36; border-radius:16px; background:linear-gradient(180deg,#0e131a,#0b1016); overflow:hidden}
+
+    .path{position:absolute; inset:0}
+    svg{position:absolute; width:100%; height:100%}
+    .loop-path{fill:none; stroke:#2a3542; stroke-dasharray:8 6; stroke-width:2}
+    .axis{stroke:#42566e; stroke-width:1.5}
+    .tick{stroke:#6c86a6; stroke-width:1}
+    .label{fill:#9ab3cc; font-size:11px; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial}
+
+    .ball{position:absolute; width:var(--ball-d); height:var(--ball-d); border-radius:50%; background: radial-gradient(circle at 30% 30%, #cfe4ff, #5ea0ff 55%, #2d4f87); box-shadow: 0 10px 20px rgba(94,160,255,.25)}
+
+    .fs-overlay{position:absolute; top:12px; left:12px; display:none; gap:8px; align-items:center; background:rgba(10,16,24,.65); border:1px solid #2a3542; padding:8px 10px; border-radius:12px; backdrop-filter: blur(4px)}
+    .fs-chip{background:#0f1722; border:1px solid #253344; padding:4px 8px; border-radius:999px; font-variant-numeric: tabular-nums; font-size:.9rem}
+    .fs-overlay button{padding:6px 10px}
+    .is-fullscreen .fs-overlay{display:flex}
+
+    /* Live data panel inside stage (top-right) */
+    .data-panel{position:absolute; top:12px; right:12px; width:320px; max-width:35vw; background:rgba(10,16,24,.7); border:1px solid #253344; border-radius:12px; padding:10px; display:none; backdrop-filter: blur(4px)}
+    .data-panel.visible{display:block}
+    .data-panel h3{margin:0 0 8px 0; font-size:.95rem; color:#cfe4ff}
+    .data-panel .meta{font-size:.85rem; color:#9ab3cc; margin-bottom:6px}
+    .data-scroll{max-height: 11em; overflow:auto; border:1px solid #1e2a38; border-radius:8px; background:#0f1722}
+    table.datatable{width:100%; border-collapse:collapse; font-variant-numeric: tabular-nums}
+    table.datatable th, table.datatable td{padding:6px 8px; border-bottom:1px solid #1e2a38}
+    table.datatable th{position:sticky; top:0; background:#0c141e; text-align:left}
+
+    /* Easter egg overlay */
+    .egg-overlay{position:absolute; top:0; left:0; right:0; bottom:0; display:none; align-items:center; justify-content:center; background:#0b48ff; z-index:9999; text-align:center}
+    .egg-overlay.visible{display:flex}
+    .egg-text{color:#fff; font-weight:900; letter-spacing:.5px; text-transform:uppercase; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial; font-size:clamp(28px,8vw,120px); text-shadow:0 4px 18px rgba(0,0,0,.35)}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Motion 6</h1>
+    <div class="controls">
+      <button id="startBtn">Start</button>
+      <button id="pauseBtn" disabled>Pause</button>
+      <button id="resumeBtn" disabled>Resume</button>
+      <button id="stopBtn" disabled>Stop</button>
+      <button id="resetBtn" disabled>Reset</button>
+      <button id="fullscreenBtn">Full Screen</button>
+      <label>Speed <input type="range" id="speedSlider" min="50" max="600" value="240"></label>
+      <label>Radius <input type="range" id="radiusSlider" min="1" max="220" value="100"></label>
+      <button id="toggleTableBtn">Add data table</button>
+      <button id="downloadCsvBtn" disabled>Download CSV</button>
+    </div>
+    <div class="readout">
+      <div class="chip">t = <span id="tOut">0.00</span> s</div>
+      <div class="chip">x = <span id="xOut">0.00</span> m</div>
+      <div class="chip">y = <span id="yOut">0.00</span> m</div>
+    </div>
+  </header>
+
+  <div class="stage-wrap" id="stageWrap">
+    <div class="stage" id="stage">
+      <div class="path">
+        <svg id="pathSvg">
+          <g id="axes"></g>
+          <path id="loopPath" class="loop-path"/>
+        </svg>
+      </div>
+      <div class="ball" id="ball" aria-label="moving ball"></div>
+
+      <div class="fs-overlay" id="fsOverlay">
+        <span class="fs-chip">t=<span id="fsT">0.00</span> s</span>
+        <span class="fs-chip">x=<span id="fsX">0.00</span> m</span>
+        <span class="fs-chip">y=<span id="fsY">0.00</span> m</span>
+        <button id="exitFsBtn">Exit</button>
+      </div>
+
+      <!-- Live data panel -->
+      <div class="data-panel" id="dataPanel">
+        <h3>Data (t, x, y)</h3>
+        <div class="meta" id="dataMeta">—</div>
+        <div class="data-scroll">
+          <table class="datatable">
+            <thead><tr><th>t (s)</th><th>x (m)</th><th>y (m)</th></tr></thead>
+            <tbody id="dataBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Easter egg overlay -->
+      <div class="egg-overlay" id="eggOverlay"><div class="egg-text" id="eggText"></div></div>
+
+    </div>
+  </div>
+
+  <script>
+  (function(){
+    // ====== Easter egg config ======
+    let easterEgg = "on"; // change to "off" to disable entirely
+    const EGG_PERIOD = 5;             // seconds per probability window
+    const EGG_FLASH_DURATION = 700;   // ms
+    const EGG_WORDS = [
+  // — your originals —
+  "ROBY RULES",
+  "ROBY-WAN-KENOBI",
+  "ROBY OR NOT TO BE",
+  "PAT IS THE QUESTION",
+  "ROBY'S WATCHING YOU",
+  "YOU GOT THIS OFF PAT",
+
+  // — movie / TV riffs —
+  "I AM PAT, HEAR ME ROAR",
+  "MAY THE ROBY BE WITH YOU",
+  "NO ROBY, NO CRY",
+  "I'LL BE ROBY",
+  "PAT TO THE FUTURE",
+  "PATMAN BEGINS",
+  "THE GOOD, THE BAD, THE ROBY",
+  "ET PHONE PAT",
+
+  // — music / pop culture —
+  "ALL YOU NEED IS ROBY",
+  "DON'T STOP ROBYING",
+  "WHAT'S PAT GOT TO DO",
+  "ROBY LIKE A HURRICANE",
+  "U CAN'T TOUCH PAT",
+  "HIT ME WITH YOUR ROBY SHOT",
+
+  // — humorous / playful —
+  "KEEP CALM AND ROBY ON",
+  "ROBYS JUST WANNA HAVE FUN",
+  "HOUSTON, WE HAVE A PAT",
+  "ROBY OUT OF CONTROL",
+  "WHO YA GONNA CALL? ROBY",
+  "PATIENCE IS A VIRTUE",
+  "IN ROBY WE TRUST",
+  "PAT HAPPENS",
+  "ROBY THE BUILDER"
+];
+
+
+    // ====== Element refs ======
+    const stage   = document.getElementById('stage');
+    const stageWrap = document.getElementById('stageWrap');
+    const ball    = document.getElementById('ball');
+    const loopPathEl = document.getElementById('loopPath');
+    const axesG   = document.getElementById('axes');
+
+    const startBtn = document.getElementById('startBtn');
+    const pauseBtn = document.getElementById('pauseBtn');
+    const resumeBtn = document.getElementById('resumeBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const fullscreenBtn = document.getElementById('fullscreenBtn');
+    const exitFsBtn = document.getElementById('exitFsBtn');
+
+    const speedSlider = document.getElementById('speedSlider');
+    const radiusSlider = document.getElementById('radiusSlider');
+
+    const tOut = document.getElementById('tOut');
+    const xOut = document.getElementById('xOut');
+    const yOut = document.getElementById('yOut');
+    const fsT = document.getElementById('fsT');
+    const fsX = document.getElementById('fsX');
+    const fsY = document.getElementById('fsY');
+
+    const dataPanel = document.getElementById('dataPanel');
+    const dataMeta  = document.getElementById('dataMeta');
+    const dataBody  = document.getElementById('dataBody');
+    const downloadCsvBtn = document.getElementById('downloadCsvBtn');
+
+    const eggOverlay = document.getElementById('eggOverlay');
+    const eggText = document.getElementById('eggText');
+
+    // ====== App state ======
+    let running = false;
+    let paused = false;
+    let startTime = 0;  // perf.now() when (re)started
+    let elapsed = 0;    // accumulated before current run
+    let rafId = null;
+
+    let ballOffset = 14; // px
+    let SPEED = 240;     // px/s
+
+    const HEIGHT_SCALE = 0.8;
+
+    let loop = {left:0, top:0, right:0, bottom:0, side:0, radius:100, centerX:0, centerY:0};
+
+    // ====== Live table state ======
+    let tableVisible = false;
+    let collected = []; // {t,x,y}
+    let liveEnd = 0;    // seconds
+    let liveDt  = 0.5;  // seconds
+    let nextSampleT = null; // next sampling time (>=0), null => done/disabled
+    let autoPausedAtEnd = false; // auto-pause once table reaches end
+
+    // ====== Easter egg state ======
+    let eggUsedOnce = false; // once per page load
+    let lastEggBucket = -1;  // track 5s buckets
+    let scheduledEggAt = null; // absolute t when egg will fire within bucket
+
+    // ====== Utils ======
+    const fmt = s => (Math.round(s*100)/100).toFixed(2);
+    const NS = 'http://www.w3.org/2000/svg';
+
+    function updateReadouts(t,xm,ym){
+      tOut.textContent = fmt(t); fsT.textContent = fmt(t);
+      xOut.textContent = xm.toFixed(2); fsX.textContent = xm.toFixed(2);
+      yOut.textContent = ym.toFixed(2); fsY.textContent = ym.toFixed(2);
+    }
+
+    function setCenter(x, y, t){
+      ball.style.transform = `translate(${x - ballOffset}px, ${y - ballOffset}px)`;
+      const xm = (x - loop.centerX)/100; // m
+      const ym = (loop.centerY - y)/100; // m (up positive)
+      updateReadouts(t, xm, ym);
+    }
+
+    function buildAxes(){
+      const w = stage.clientWidth, h = stage.clientHeight;
+      const cx = loop.centerX, cy = loop.centerY;
+      axesG.innerHTML = '';
+      const hLine = document.createElementNS(NS,'line'); hLine.setAttribute('x1', 0); hLine.setAttribute('y1', cy); hLine.setAttribute('x2', w); hLine.setAttribute('y2', cy); hLine.setAttribute('class','axis');
+      const vLine = document.createElementNS(NS,'line'); vLine.setAttribute('x1', cx); vLine.setAttribute('y1', 0); vLine.setAttribute('x2', cx); vLine.setAttribute('y2', h); vLine.setAttribute('class','axis');
+      axesG.appendChild(hLine); axesG.appendChild(vLine);
+
+      const makeTick = (x1,y1,x2,y2)=>{const t=document.createElementNS(NS,'line');t.setAttribute('x1',x1);t.setAttribute('y1',y1);t.setAttribute('x2',x2);t.setAttribute('y2',y2);t.setAttribute('class','tick');return t;};
+      const makeLabel=(x,y,text)=>{const lb=document.createElementNS(NS,'text');lb.setAttribute('x',x);lb.setAttribute('y',y);lb.setAttribute('class','label');lb.textContent=text;return lb;};
+
+      const major=100, minor=10, Lmaj=10, Lmin=5, lblOff=16;
+      for(let x=cx; x<=w; x+=minor){const isM=((x-cx)%major===0);axesG.appendChild(makeTick(x,cy-(isM?Lmaj:Lmin),x,cy+(isM?Lmaj:Lmin))); if(isM&&x!==cx) axesG.appendChild(makeLabel(x+2,cy-lblOff,((x-cx)/100).toFixed(1)));}
+      for(let x=cx-minor; x>=0; x-=minor){const isM=((cx-x)%major===0);axesG.appendChild(makeTick(x,cy-(isM?Lmaj:Lmin),x,cy+(isM?Lmaj:Lmin))); if(isM&&x!==cx) axesG.appendChild(makeLabel(x+2,cy-lblOff,((x-cx)/100).toFixed(1)));}
+      for(let y=cy; y<=h; y+=minor){const isM=((y-cy)%major===0);axesG.appendChild(makeTick(cx-(isM?Lmaj:Lmin),y,cx+(isM?Lmaj:Lmin),y)); if(isM&&y!==cy) axesG.appendChild(makeLabel(cx+lblOff,y-2,((cy-y)/100).toFixed(1)));}
+      for(let y=cy-minor; y>=0; y-=minor){const isM=((cy-y)%major===0);axesG.appendChild(makeTick(cx-(isM?Lmaj:Lmin),y,cx+(isM?Lmaj:Lmin),y)); if(isM&&y!==cy) axesG.appendChild(makeLabel(cx+lblOff,y-2,((cy-y)/100).toFixed(1)));}
+      axesG.appendChild(makeLabel(cx+4, cy-6, '0'));
+    }
+
+    function updateLoopGeometry(){
+      const inset = 80;
+      const w = stage.clientWidth;
+      const h = stage.clientHeight;
+      const maxW = w - 2*inset;
+      const maxH = (h - 2*inset) * HEIGHT_SCALE;
+      const side = Math.max(40, Math.min(maxW, maxH));
+
+      const rCap = side/2;
+      radiusSlider.max = String(Math.max(1, Math.floor(rCap)));
+      let radius = Math.min(parseInt(radiusSlider.value||'1',10), rCap);
+      if(!Number.isFinite(radius) || radius < 1){ radius = 1; radiusSlider.value = '1'; }
+
+      const top = inset + radius;
+      const left = (w - side)/2 + radius;
+      const right = left + (side - 2*radius);
+      const bottom = top + (side - 2*radius);
+
+      const centerX = (left + right)/2;
+      const centerY = (top + bottom)/2;
+      loop = {left, top, right, bottom, side, radius, centerX, centerY};
+
+      const d = `M${left},${top - radius}
+                 H${right}
+                 A${radius},${radius} 0 0 1 ${right + radius},${top}
+                 V${bottom}
+                 A${radius},${radius} 0 0 1 ${right},${bottom + radius}
+                 H${left}
+                 A${radius},${radius} 0 0 1 ${left - radius},${bottom}
+                 V${top}
+                 A${radius},${radius} 0 0 1 ${left},${top - radius}
+                 Z`;
+      loopPathEl.setAttribute('d', d);
+    }
+
+    function positionOnPathByTime(t){
+      const L = loopPathEl.getTotalLength();
+      if(L <= 0){ return {x: loop.centerX, y: loop.centerY}; }
+      const s = SPEED * t; // px along path
+      const len = ((s % L) + L) % L;
+      const pt = loopPathEl.getPointAtLength(len);
+      return {x: pt.x, y: pt.y};
+    }
+
+    // ====== Live data helpers ======
+    function clearTable(){ collected = []; dataBody.innerHTML = ''; }
+    function appendRow(r){
+      collected.push(r);
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${fmt(r.t)}</td><td>${r.x.toFixed(2)}</td><td>${r.y.toFixed(2)}</td>`;
+      dataBody.appendChild(tr);
+      const scroller = dataBody.parentElement; scroller.scrollTop = scroller.scrollHeight;
+    }
+    function sampleAt(t){
+      const pt = positionOnPathByTime(t);
+      const xm = (pt.x - loop.centerX)/100;
+      const ym = (loop.centerY - pt.y)/100;
+      appendRow({t, x: xm, y: ym});
+    }
+
+    function armLiveCapture(Tend, dt){
+      liveEnd = Tend; liveDt = dt; nextSampleT = 0; autoPausedAtEnd = false;
+      dataPanel.classList.add('visible');
+      dataMeta.textContent = `0 → ${fmt(Tend)} s, Δt = ${fmt(dt)} s`;
+      downloadCsvBtn.disabled = false;
+      clearTable();
+    }
+    function disarmLiveCapture(){
+      nextSampleT = null; autoPausedAtEnd = false; clearTable();
+      dataPanel.classList.remove('visible');
+      downloadCsvBtn.disabled = true;
+    }
+    function downloadCSV(){
+      if(collected.length === 0){ alert('No data to download.'); return; }
+      let csv = 't (s),x (m),y (m)\n';
+      for(const r of collected){ csv += `${fmt(r.t)},${r.x.toFixed(3)},${r.y.toFixed(3)}\n`; }
+      const blob = new Blob([csv], {type: 'text/csv'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = 'motion6_live_data.csv';
+      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    }
+
+    // ====== Core flow ======
+    function prep(){
+      ballOffset = parseFloat(getComputedStyle(ball).width)/2 || 14;
+      SPEED = parseInt(speedSlider.value||'240',10);
+      updateLoopGeometry();
+      buildAxes();
+    }
+
+    function step(now){
+      if(!running){ return; }
+      if(paused){ rafId = requestAnimationFrame(step); return; }
+      const t = (now - startTime)/1000 + elapsed; // 0 at Start
+      const pt = positionOnPathByTime(t);
+      setCenter(pt.x, pt.y, t);
+
+      // live sampling at exact multiples of dt
+      if(tableVisible && nextSampleT !== null){
+        while(nextSampleT !== null && t + 1e-9 >= nextSampleT){
+          sampleAt(nextSampleT);
+          nextSampleT += liveDt;
+          if(nextSampleT > liveEnd + 1e-9){ nextSampleT = null; break; }
+        }
+      }
+      // Auto-pause at (or just after) data table end time
+      if(tableVisible && liveEnd > 0 && nextSampleT === null && !autoPausedAtEnd){
+        autoPausedAtEnd = true;
+        const ptEnd = positionOnPathByTime(liveEnd);
+        setCenter(ptEnd.x, ptEnd.y, liveEnd);
+        elapsed = liveEnd; // freeze at Tend
+        paused = true;
+        toggleButtons('paused');
+      }
+
+      // Easter egg: schedule within 5s windows; 50% chance per window; once per page load
+      if(easterEgg === 'on' && !eggUsedOnce){
+        const bucket = Math.floor(t / EGG_PERIOD);
+        if(bucket !== lastEggBucket){
+          lastEggBucket = bucket;
+          if(Math.random() < 0.5){
+            const startT = bucket * EGG_PERIOD;
+            scheduledEggAt = startT + Math.random() * EGG_PERIOD;
+          } else {
+            scheduledEggAt = null;
+          }
+        }
+        if(scheduledEggAt !== null && t >= scheduledEggAt){
+          scheduledEggAt = null;
+          triggerEgg();
+        }
+      }
+
+      rafId = requestAnimationFrame(step);
+    }
+
+    function toggleButtons(state){
+      if(state==='idle'){
+        startBtn.disabled=false; pauseBtn.disabled=true; resumeBtn.disabled=true; stopBtn.disabled=true; resetBtn.disabled=true;
+      } else if(state==='running'){
+        startBtn.disabled=true; pauseBtn.disabled=false; resumeBtn.disabled=true; stopBtn.disabled=false; resetBtn.disabled=false;
+      } else if(state==='paused'){
+        startBtn.disabled=true; pauseBtn.disabled=true; resumeBtn.disabled=false; stopBtn.disabled=false; resetBtn.disabled=false;
+      } else if(state==='stopped'){
+        startBtn.disabled=false; pauseBtn.disabled=true; resumeBtn.disabled=true; stopBtn.disabled=true; resetBtn.disabled=false;
+      }
+    }
+
+    // ====== Events ======
+    startBtn.addEventListener('click',()=>{
+      cancelAnimationFrame(rafId);
+      prep(); // ensure geometry exists before querying path length
+      running = true; paused = false; elapsed = 0; autoPausedAtEnd = false;
+      const p0 = positionOnPathByTime(0);
+      setCenter(p0.x,p0.y,0);
+      startTime = performance.now();
+      toggleButtons('running');
+      rafId = requestAnimationFrame(step);
+    });
+
+    pauseBtn.addEventListener('click',()=>{
+      if(!running || paused) return;
+      const tNow = performance.now();
+      elapsed += (tNow - startTime)/1000;
+      paused = true;
+      toggleButtons('paused');
+    });
+
+    resumeBtn.addEventListener('click',()=>{
+      if(!running || !paused) return;
+      paused = false; startTime = performance.now();
+      toggleButtons('running');
+      rafId = requestAnimationFrame(step);
+    });
+
+    stopBtn.addEventListener('click',()=>{
+      if(!running) return;
+      running = false; paused = false;
+      toggleButtons('stopped');
+      cancelAnimationFrame(rafId);
+    });
+
+    resetBtn.addEventListener('click',()=>{
+      running = false; paused = false; elapsed = 0; autoPausedAtEnd = false;
+      cancelAnimationFrame(rafId);
+      prep();
+      const p0 = positionOnPathByTime(0);
+      setCenter(p0.x,p0.y,0);
+      toggleButtons('idle');
+      if(tableVisible){ nextSampleT = 0; clearTable(); }
+    });
+
+    fullscreenBtn.addEventListener('click',()=>{
+      if(stageWrap.requestFullscreen){ stageWrap.requestFullscreen(); }
+      else if(stageWrap.webkitRequestFullscreen){ stageWrap.webkitRequestFullscreen(); }
+    });
+
+    document.addEventListener('fullscreenchange', ()=>{
+      const fs = document.fullscreenElement === stageWrap;
+      stageWrap.classList.toggle('is-fullscreen', fs);
+      prep();
+    });
+    exitFsBtn.addEventListener('click', ()=>{ if(document.fullscreenElement){ document.exitFullscreen(); } });
+
+    speedSlider.addEventListener('input',()=>{ SPEED = parseInt(speedSlider.value||'240',10); });
+    radiusSlider.addEventListener('input',()=>{ updateLoopGeometry(); buildAxes(); });
+
+    // Data table controls
+    const toggleTableBtn = document.getElementById('toggleTableBtn');
+    toggleTableBtn.addEventListener('click', ()=>{
+      if(!tableVisible){
+        const TendStr = prompt('End time in seconds (start is 0):', '10'); if(TendStr===null) return;
+        const dtStr   = prompt('Time increment Δt in seconds:', '0.5'); if(dtStr===null) return;
+        const Tend = parseFloat(TendStr), dt = parseFloat(dtStr);
+        if(!Number.isFinite(Tend) || !Number.isFinite(dt) || Tend<=0 || dt<=0){ alert('Enter positive numbers.'); return; }
+        if(Tend/dt > 5000){ alert('Too many rows (>5000). Increase Δt or reduce end time.'); return; }
+        armLiveCapture(Tend, dt);
+        tableVisible = true; toggleTableBtn.textContent = 'Remove data table';
+      } else {
+        disarmLiveCapture();
+        tableVisible = false; toggleTableBtn.textContent = 'Add data table';
+      }
+    });
+    downloadCsvBtn.addEventListener('click', downloadCSV);
+
+    // ====== Easter egg ======
+    function triggerEgg(){
+      if(eggUsedOnce) return;
+      eggUsedOnce = true;
+      // Pause timekeeping (without changing UI state)
+      const now = performance.now();
+      elapsed += (now - startTime)/1000; // freeze t
+      paused = true;
+      // Show phrase overlay
+      eggText.textContent = EGG_WORDS[Math.floor(Math.random()*EGG_WORDS.length)];
+      eggOverlay.classList.add('visible');
+      eggOverlay.style.display = 'flex'; // enforce display in case class change is delayed
+      // Quirky pop sound
+      popSound();
+      // Hide after duration and resume
+      setTimeout(()=>{
+        eggOverlay.classList.remove('visible');
+        eggOverlay.style.display = 'none';
+        paused = false; startTime = performance.now();
+      }, EGG_FLASH_DURATION);
+    }
+
+    function popSound(){
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        // Quirky 'pop': brief descending glide with snappy envelope
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(600, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(150, ctx.currentTime + 0.15);
+        gain.gain.setValueAtTime(0.001, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.4, ctx.currentTime + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
+        osc.connect(gain).connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.3);
+        osc.onended = () => ctx.close();
+      } catch(e) { /* ignore audio errors */ }
+    }
+
+    // ====== Initial paint ======
+    prep();
+    const p0 = positionOnPathByTime(0);
+    setCenter(p0.x,p0.y,0);
+    toggleButtons('idle');
+
+    window.addEventListener('resize', ()=>{
+      prep();
+      const curT = running? ((performance.now()-startTime)/1000 + elapsed) : 0;
+      const p = positionOnPathByTime(curT);
+      setCenter(p.x,p.y,curT);
+    });
+  })();
+  </script>
+</body>
+</html>
