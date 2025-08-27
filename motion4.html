@@ -77,6 +77,17 @@
     body.hide-vel .chip.vel { display:none; }
     body.hide-vel th.th-v,
     body.hide-vel td.td-v { display:none; }
+/* FIX: use a fixed track length so everyone's physics matches */
+.stage {
+  width: 900px;      /* choose 800/900/1000 px and use the same in all Motion files */
+  margin: 0 auto;    /* center the track */
+}
+
+/* Nice-to-have: allow horizontal scroll on very small screens */
+.stage-wrap {
+  overflow-x: auto;
+}
+
   </style>
 </head>
 <body>

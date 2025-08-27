@@ -68,6 +68,17 @@
     body.hide-vx th.th-vx, body.hide-vx td.td-vx { display:none; }
     body.hide-vy .chip.vy { display:none; }
     body.hide-vy th.th-vy, body.hide-vy td.td-vy { display:none; }
+/* Lock the track width so SPEED is identical on all machines */
+.stage {
+  width: 1000px;   /* >= 914 px to safely include X_ARC_END (900) + ball radius (~14) */
+  margin: 0 auto;  /* center it */
+}
+
+/* If a student’s screen is narrower than the fixed width, allow horizontal scroll */
+.stage-wrap {
+  overflow-x: auto;
+}
+
   </style>
 </head>
 <body>
